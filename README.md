@@ -1,13 +1,12 @@
 # game-perf
 
-AI가 만든 게임 코드에서 프레임 드롭을 유발하는 10가지 패턴을 자동 탐지하고 수정하는 Claude Code 플러그인.
-React/Zustand UI부터 Three.js, WebGL, PixiJS, Phaser 게임 엔진까지 커버합니다.
+A Claude Code plugin that detects and fixes 10 common frame-drop patterns in AI-generated game code — from React/Zustand UI to Three.js, WebGL, PixiJS, and Phaser.
 
-A Claude Code plugin that detects and fixes 10 common frame-drop patterns in game/interactive app code — from React/Zustand UI to Three.js, WebGL, PixiJS, and Phaser.
+[한국어](./README-kr.md)
 
 ---
 
-## 설치 | Install
+## Install
 
 ```bash
 git clone https://github.com/gykim80/andrew_game_perf.git game-perf
@@ -16,76 +15,76 @@ claude --plugin-dir ./game-perf
 
 ---
 
-## 사용법 | Usage
+## Usage
 
 ```bash
-/game-perf                # 전체 프로젝트 스캔 | Scan entire project
-/game-perf src/           # 특정 디렉토리 | Scan directory
-/game-perf src/ --fix     # 스캔 + 자동 수정 | Scan & auto-fix
+/game-perf              # Scan entire project
+/game-perf src/         # Scan specific directory
+/game-perf src/ --fix   # Scan + auto-fix
 ```
 
 ---
 
-## 10가지 패턴 | 10 Patterns
+## 10 Patterns
 
 ### UI Layer (React / State Management)
 
-| # | 패턴 | 등급 | Before | After |
-|---|------|------|--------|-------|
-| 1 | 루프 안에서 `.find()` — O(n²) | CRITICAL | 10ms/f | 0.5ms |
-| 2 | `useState`로 카메라/줌 | CRITICAL | 60 renders/s | 0 |
-| 3 | 드래그에서 `setState` | WARNING | 120 renders/s | 1 |
-| 4 | Zustand selector 객체 반환 | CRITICAL | 탭 크래시 | 안정 |
-| 5 | 대량 리스트 미가상화 | WARNING | 25fps | 60fps |
+| # | Pattern | Severity | Before | After |
+|---|---------|----------|--------|-------|
+| 1 | `.find()` in loop — O(n²) | CRITICAL | 10ms/f | 0.5ms |
+| 2 | `useState` for camera/zoom | CRITICAL | 60 renders/s | 0 |
+| 3 | `setState` in drag handler | WARNING | 120 renders/s | 1 |
+| 4 | Zustand selector returning object | CRITICAL | tab crash | stable |
+| 5 | Large list without virtualization | WARNING | 25fps | 60fps |
 
 ### Game Engine (Three.js / WebGL / PixiJS / Phaser)
 
-| # | 패턴 | 등급 | Before | After |
-|---|------|------|--------|-------|
-| 6 | 렌더 루프에서 `new` — GC 압력 | CRITICAL | GC 15ms | 0ms |
-| 7 | `scene.remove()`만 — VRAM 누수 | CRITICAL | 320MB 누수 | 0 |
-| 8 | 오브젝트마다 개별 draw call | WARNING | 30ms CPU | 0.05ms |
-| 9 | 총알/파티클 생성+파괴 반복 | WARNING | GC/1-2s | 0 GC |
-| 10 | 가변 타임스텝 물리 | WARNING | 관통/텔레포트 | 결정적 |
+| # | Pattern | Severity | Before | After |
+|---|---------|----------|--------|-------|
+| 6 | `new` in render loop — GC pressure | CRITICAL | GC 15ms | 0ms |
+| 7 | `scene.remove()` without dispose — VRAM leak | CRITICAL | 320MB leak | 0 |
+| 8 | Per-object draw calls | WARNING | 30ms CPU | 0.05ms |
+| 9 | Bullet/particle create+destroy cycle | WARNING | GC/1-2s | 0 GC |
+| 10 | Variable timestep physics | WARNING | tunneling | deterministic |
 
 ---
 
-## 코드 예시 | Examples
+## Examples
 
 ### #1. `.find()` in loop → `Map`
 
 ```js
-// Before — O(n²), 1000개면 프레임당 100만 번 비교
+// Before — O(n²), 1000 entities = 1M comparisons per frame
 renderObjects.forEach(obj => {
   const entity = entities.find(e => e.id === obj.entityId);
 });
 
-// After — O(n), Map 한 줄 추가
+// After — O(n), one Map
 const map = new Map(entities.map(e => [e.id, e]));
 renderObjects.forEach(obj => {
   const entity = map.get(obj.entityId);
 });
 ```
 
-### #6. `new` in render loop → 재사용 객체
+### #6. `new` in render loop → reusable object
 
 ```js
-// Before — 매 프레임 가비지 생성
+// Before — garbage every frame
 useFrame(() => {
   const dir = new THREE.Vector3().subVectors(target, pos).normalize();
 });
 
-// After — 모듈 스코프 재사용
+// After — module-scope reuse
 const _dir = new THREE.Vector3();
 useFrame(() => {
   _dir.subVectors(target, pos).normalize();
 });
 ```
 
-### #7. `scene.remove()` → `dispose()` 필수
+### #7. `scene.remove()` → `dispose()` required
 
 ```js
-// 4K 텍스처 1장 = 64MB. 씬 전환 5번 = 320MB 누수
+// 4K texture = 64MB. 5 scene changes = 320MB leak
 function disposeObject(obj) {
   obj.traverse(child => {
     if (child.isMesh) {
@@ -103,9 +102,9 @@ function disposeObject(obj) {
 
 ---
 
-## 호환성 | Compatibility
+## Compatibility
 
-| 프레임워크 | 탐지 패턴 |
+| Framework | Patterns |
 |-----------|----------|
 | React | P1-P5 |
 | Zustand / Redux / Jotai | P2, P4 |
@@ -117,12 +116,12 @@ function disposeObject(obj) {
 
 ---
 
-## 동작 원리 | How It Works
+## How It Works
 
-1. **스캔**: Grep 패턴 매칭 (`*.ts`, `*.tsx`, `*.js`, `*.jsx`)
-2. **검증**: 주변 컨텍스트 분석으로 오탐 배제
-3. **리포트**: 심각도별 구조화 출력 (CRITICAL → WARNING)
-4. **수정** (`--fix`): 사용자 확인 후 자동 수정, 재스캔 검증
+1. **Scan**: Grep pattern matching on `*.ts`, `*.tsx`, `*.js`, `*.jsx`
+2. **Verify**: Context analysis to eliminate false positives
+3. **Report**: Structured output by severity (CRITICAL → WARNING)
+4. **Fix** (`--fix`): Shows proposed code, applies after confirmation, re-scans
 
 ---
 
